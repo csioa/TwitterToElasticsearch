@@ -113,7 +113,8 @@ object TwitterToElasticsearch {
 
     // Ingesting to Elasticsearch
     parsedTweet.foreachRDD(rdd =>
-      rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id")))
+      rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id"))
+    )
 
     ssc.start()
     ssc.awaitTermination()
