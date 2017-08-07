@@ -26,7 +26,8 @@ object TwitterToElasticsearch {
       "text" -> tweetText.toString,
       "user_id" -> tweetUser.toString,
       "user_name" -> tweetUserName,
-      "location" -> Array(tweetLocation.getLatitude.toString, ',', tweetLocation.getLongitude.toString).mkString
+      "location" -> Array(tweetLocation.getLatitude.toString,
+        ',', tweetLocation.getLongitude.toString).mkString
     )
     tweetMap
   }
@@ -49,14 +50,17 @@ object TwitterToElasticsearch {
     val consumer_secret = properties.get("consumer_secret").asInstanceOf[String]
     val access_token = properties.get("access_token").asInstanceOf[String]
     val access_token_secret = properties.get("access_token_secret").asInstanceOf[String]
+    val SPARK_MASTER = properties.get("spark_master").asInstanceOf[String]
+    val ES_HOST = properties.get("elasticsearch_host").asInstanceOf[String]
+    val ES_PORT = properties.get("elasticsearch_port").asInstanceOf[String]
 
-    val conf = new SparkConf().setMaster("local[4]")
+    val conf = new SparkConf()
+      .setMaster(SPARK_MASTER)
       .setAppName("TwitterToES")
-      .set("es.port", "9200")
-      .set("es.nodes","localhost")
+      .set("es.port", ES_PORT)
+      .set("es.nodes",ES_HOST)
       .set("es.index.auto.create", "false")
 
-//    val sc = new SparkContext(conf)
     val ssc = new StreamingContext(conf, Seconds(5))
 //
     // Building the configuration for the Authenticator
@@ -83,7 +87,8 @@ object TwitterToElasticsearch {
                              tweet.getUser.getName, tweet.getGeoLocation))
 
 
-    parsedTweet.foreachRDD(rdd => rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id")))
+    parsedTweet.foreachRDD(rdd =>
+      rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id")))
 
     ssc.start()
     ssc.awaitTermination()
