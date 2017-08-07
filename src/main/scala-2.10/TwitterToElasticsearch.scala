@@ -1,7 +1,8 @@
 import java.io.FileInputStream
+import java.text.SimpleDateFormat
 import java.util.{Date, Properties}
 
-import twitter4j.{GeoLocation, StatusJSONImpl, User}
+import twitter4j.GeoLocation
 import twitter4j.auth.OAuthAuthorization
 import twitter4j.conf.ConfigurationBuilder
 import org.apache.spark._
@@ -10,19 +11,22 @@ import org.apache.spark.streaming.twitter._
 import org.apache.spark.SparkContext
 import org.elasticsearch.spark._
 
-import scala.collection.immutable.HashMap
-
 
 object TwitterToElasticsearch {
 
-  def parsingTweets(tweetId:Long, tweetDate:Date, tweetText:String, tweetUser:Long, tweetUserName: String, tweetLocation: GeoLocation) : Map[String, String] = {
+  def parsingTweets(tweetId:Long, tweetDate:Date, tweetText:String,
+                    tweetUser:Long, tweetUserName: String, tweetLocation: GeoLocation)
+  : Map[String, Object] = {
+
+    val outputFormat = new SimpleDateFormat("yyyy-MM-dd\'T\'HH:mm:ss.SSS")
+    val _timestamp = outputFormat.format(tweetDate)
     val tweetMap = Map(
       "id" -> tweetId.toString,
-      "date" -> tweetDate.toString,
+      "@timestamp" -> _timestamp.toString,
       "text" -> tweetText.toString,
       "user_id" -> tweetUser.toString,
       "user_name" -> tweetUserName,
-      "location" -> tweetLocation.toString
+      "location" -> Array(tweetLocation.getLatitude.toString, ',', tweetLocation.getLongitude.toString).mkString
     )
     tweetMap
   }
@@ -50,7 +54,7 @@ object TwitterToElasticsearch {
       .setAppName("TwitterToES")
       .set("es.port", "9200")
       .set("es.nodes","localhost")
-      .set("es.index.auto.create", "true")
+      .set("es.index.auto.create", "false")
 
 //    val sc = new SparkContext(conf)
     val ssc = new StreamingContext(conf, Seconds(5))
@@ -67,14 +71,17 @@ object TwitterToElasticsearch {
     // Instantiating the Twitter stream
     val tweetStream = TwitterUtils.createStream(ssc, auth)
 
-    val englishTweet = tweetStream.filter(tweet => tweet.getLang.equals("en"))
-    val noRetweet = englishTweet.filter(tweet => tweet.isRetweet.equals(false))
-    val withLocation = noRetweet.filter(tweet => tweet.getGeoLocation != null)
+    val filteredTweet = tweetStream.filter(
+      tweet => tweet.getLang.equals("en")
+      && tweet.isRetweet.equals(false)
+      && tweet.getGeoLocation != null
+    )
 
-    val parsedTweet = withLocation.map(tweet => parsingTweets(tweet.getId,
-      tweet.getCreatedAt, tweet.getText, tweet.getUser.getId, tweet.getUser.getName, tweet.getGeoLocation))
+    val parsedTweet = filteredTweet.map(
+      tweet => parsingTweets(tweet.getId, tweet.getCreatedAt,
+                             tweet.getText, tweet.getUser.getId,
+                             tweet.getUser.getName, tweet.getGeoLocation))
 
-//    parsedTweet.print(10)
 
     parsedTweet.foreachRDD(rdd => rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id")))
 
