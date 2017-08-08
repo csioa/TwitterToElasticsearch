@@ -20,4 +20,4 @@ parsedTweet.foreachRDD(rdd =>
 Kibana offers a rich set of options for visualizing our tweets. We can choose among pie charts, line charts, histograms, world map, etc.
 Some examples can be seen below:
 
-![Images](https://github.com/csioa/TwitterToElasticsearch/blob/master/kibana.png)
+![Images](kibana.png)
