@@ -10,8 +10,7 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.streaming.twitter._
 import org.elasticsearch.spark._
 
-case class Tweet(name:String, lat:Double, lon:Double)
-
+case class Country(name:String, lat:Double, lon:Double)
 
 object TwitterToElasticsearch {
 
@@ -48,7 +47,7 @@ object TwitterToElasticsearch {
   }
 
   val locations = Source.fromFile("geolocation.tsv").getLines.map(_.split("\t"))
-  val countries = locations.map(country => Tweet(country(0),
+  val countries = locations.map(country => Country(country(0),
                                                  country(1).toDouble,
                                                  country(2).toDouble))
 
