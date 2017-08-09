@@ -2,12 +2,15 @@ import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.{Date, Properties}
 import scala.io.Source
+import math.{pow, sqrt}
 import twitter4j.auth.OAuthAuthorization
 import twitter4j.conf.ConfigurationBuilder
 import org.apache.spark._
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.streaming.twitter._
 import org.elasticsearch.spark._
+
+case class Tweet(name:String, lat:Double, lon:Double)
 
 
 object TwitterToElasticsearch {
@@ -17,6 +20,7 @@ object TwitterToElasticsearch {
   : Map[String, Object] = {
 
     val outputFormat = new SimpleDateFormat("yyyy-MM-dd\'T\'HH:mm:ss.SSS")
+    val indexDateFormat = new SimpleDateFormat("yyyy.MM.dd")
     val _timestamp = outputFormat.format(tweetDate)
     val tweetMap = Map(
       "id" -> tweetId.toString,
@@ -24,34 +28,30 @@ object TwitterToElasticsearch {
       "text" -> tweetText.toString,
       "user_id" -> tweetUser.toString,
       "user_name" -> tweetUserName,
-      "location" -> tweetCountry
+      "location" -> tweetCountry,
+      "index_date" -> indexDateFormat.format(tweetDate)
     )
     tweetMap
   }
 
-  def findingLocation(lat: Double, lon: Double) : String = {
+  def findingLocation(locationLat: Double, locationLon: Double) : String = {
     var minDistance = Double.MaxValue
     var minCountry = ""
-    for(country <- locationsMap){
-      val countryLat = country._2(0)
-      val countryLong = country._2(1)
-
-      val distance = math.sqrt(math.pow(lat - countryLat, 2) + math.pow(lon - countryLong, 2))
+    for(country <- countries){
+      val distance = sqrt(pow(locationLat - country.lat, 2) + pow(locationLon - country.lon, 2))
       if(distance < minDistance) {
         minDistance = distance
-        minCountry = country._1
+        minCountry = country.name
       }
     }
     minCountry
   }
 
   val locations = Source.fromFile("geolocation.tsv").getLines.map(_.split("\t"))
-  val locationsMap = collection.mutable.Map[String, Array[Double]]()
+  val countries = locations.map(country => Tweet(country(0),
+                                                 country(1).toDouble,
+                                                 country(2).toDouble))
 
-  while(locations.hasNext){
-    val loc = locations.next()
-    locationsMap += (loc(0) -> Array(loc(1).toDouble, loc(2).toDouble))
-  }
 
   // Reading the Twitter API credentials from a properties file
   val properties = new Properties()
@@ -106,14 +106,13 @@ object TwitterToElasticsearch {
     // Parsing tweets, selecting a number of fields
     val parsedTweet = filteredTweet.map(
       tweet => parsingTweets(tweet.getId, tweet.getCreatedAt,
-        tweet.getText, tweet.getUser.getId, tweet.getUser.getName,
-              findingLocation(tweet.getGeoLocation.getLatitude,
-                tweet.getGeoLocation.getLongitude))
+                             tweet.getText, tweet.getUser.getId, tweet.getUser.getName,
+              findingLocation(tweet.getGeoLocation.getLatitude, tweet.getGeoLocation.getLongitude))
     )
 
     // Ingesting to Elasticsearch
     parsedTweet.foreachRDD(rdd =>
-      rdd.saveToEs("twitter/tweets", Map("es.mapping.id" -> "id"))
+      rdd.saveToEs("twitter-{index_date}/tweets", Map("es.mapping.id" -> "id"))
     )
 
     ssc.start()
